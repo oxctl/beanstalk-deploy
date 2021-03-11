@@ -86,17 +86,21 @@ function deployBeanstalkVersion(application, environmentName, versionLabel) {
  */
 function retry(apicall, checker, interval) {
     return new Promise((resolve, reject) =>  {
-        try {
-            apicall().then(response => {
-                if (checker(response)) {
-                    setInterval(() => retry(apicall, checker, interval), interval);
-                } else {
-                    resolve(response);
-                }
-            });
-        } catch (e) {
-            reject(e);
+        // We don't want a new promise each time we retry
+        function internal() {
+            try {
+                apicall().then(response => {
+                    if (checker(response)) {
+                        setInterval(internal, interval);
+                    } else {
+                        resolve(response);
+                    }
+                });
+            } catch (e) {
+                reject(e);
+            }
         }
+        internal();
     });
 }
 
@@ -202,7 +206,7 @@ function deployNewVersion(application, environmentName, versionLabel, versionDes
         deployStart = new Date();
         console.log(`Starting deployment of version ${versionLabel} to environment ${environmentName}`);
         // We retry this so that if a deployment is currently in progress we try again.
-        return retry(() => deployBeanstalkVersion(application, environmentName, versionLabel), isInvalidParameterValue, 5000);
+        return retry(() => deployBeanstalkVersion(application, environmentName, versionLabel), isInvalidParameterValue, 10000);
     }).then(result => {
         expect(200, result);
 
