@@ -155,11 +155,13 @@ function expect(status, result, extraErrorMessage) {
     }
 }
 
-function isInvalidParameterValue(result) {
+function shouldRetryDeployment(result) {
     if (400 === result.statusCode) {
         if (result.headers['content-type'] === 'application/json') {
-            if (result.data.Error.Code === 'InvalidParameterValue') {
+            let code = result.data.Error.Code;
+            if (code === 'InvalidParameterValue' || code === 'Throttling') {
                 // This is returned if the environment is no in a ready state and a deploy is attempted
+                console.log(`Request failed ${code} but we should retry`);
                 return true;
             }
 
@@ -206,7 +208,7 @@ function deployNewVersion(application, environmentName, versionLabel, versionDes
         deployStart = new Date();
         console.log(`Starting deployment of version ${versionLabel} to environment ${environmentName}`);
         // We retry this so that if a deployment is currently in progress we try again.
-        return retry(() => deployBeanstalkVersion(application, environmentName, versionLabel), isInvalidParameterValue, 10000);
+        return retry(() => deployBeanstalkVersion(application, environmentName, versionLabel), shouldRetryDeployment, 10000);
     }).then(result => {
         expect(200, result);
 
