@@ -91,7 +91,7 @@ function retry(apicall, checker, interval) {
             try {
                 apicall().then(response => {
                     if (checker(response)) {
-                        setInterval(internal, interval);
+                        setTimeout(internal, interval);
                     } else {
                         resolve(response);
                     }
