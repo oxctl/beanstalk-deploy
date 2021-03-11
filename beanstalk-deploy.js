@@ -78,6 +78,28 @@ function deployBeanstalkVersion(application, environmentName, versionLabel) {
     });
 }
 
+/**
+ * Retry a call as long as the checker wants.
+ * @param apicall A callback of the actual function to run
+ * @param checker A checker that is passed the response, when it returns true it retries.
+ * @param interval The interval between attempts.
+ */
+function retry(apicall, checker, interval) {
+    return new Promise((resolve, reject) =>  {
+        try {
+            apicall().then(response => {
+                if (checker(response)) {
+                    setInterval(() => retry(apicall, checker, interval), interval);
+                } else {
+                    resolve(response);
+                }
+            });
+        } catch (e) {
+            reject(e);
+        }
+    });
+}
+
 function describeEvents(application, environmentName, startTime) {
     return awsApiRequest({
         service: 'elasticbeanstalk',
@@ -129,6 +151,19 @@ function expect(status, result, extraErrorMessage) {
     }
 }
 
+function isInvalidParameterValue(result) {
+    if (400 === result.statusCode) {
+        if (result.headers['content-type'] === 'application/json') {
+            if (result.data.Error.Code === 'InvalidParameterValue') {
+                // This is returned if the environment is no in a ready state and a deploy is attempted
+                return true;
+            }
+
+        }
+    }
+    return false;
+}
+
 //Uploads zip file, creates new version and deploys it
 function deployNewVersion(application, environmentName, versionLabel, versionDescription, file, waitUntilDeploymentIsFinished, waitForRecoverySeconds) {
 
@@ -166,7 +201,8 @@ function deployNewVersion(application, environmentName, versionLabel, versionDes
         }
         deployStart = new Date();
         console.log(`Starting deployment of version ${versionLabel} to environment ${environmentName}`);
-        return deployBeanstalkVersion(application, environmentName, versionLabel, waitForRecoverySeconds);
+        // We retry this so that if a deployment is currently in progress we try again.
+        return retry(() => deployBeanstalkVersion(application, environmentName, versionLabel), isInvalidParameterValue, 5000);
     }).then(result => {
         expect(200, result);
 
